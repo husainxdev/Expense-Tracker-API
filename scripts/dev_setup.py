@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
+import tempfile
 import time
 
 from dotenv import dotenv_values
@@ -45,15 +46,14 @@ if existing:
         raise SystemExit("Container name already used by an unmanaged container; refusing to change it")
     docker("start", CONTAINER, stdout=subprocess.DEVNULL)
 else:
-    # Write only a local ignored file; passwords never appear in subprocess arguments.
-    env_path = Path(".env.postgres")
-    if env_path.exists():
-        env_path.unlink()
-    private_file(env_path, f"POSTGRES_USER=expense\nPOSTGRES_PASSWORD={url.password}\nPOSTGRES_DB=expense_tracker\n")
-    docker("run", "-d", "--name", CONTAINER, "--label", LABEL,
-           "--env-file", str(env_path), "-p", "127.0.0.1:5432:5432",
-           "-v", "expense-tracker-postgres-data:/var/lib/postgresql/data",
-           "postgres:17-bookworm", stdout=subprocess.DEVNULL)
+    # Use a private temporary file; never overwrite existing user configuration.
+    with tempfile.TemporaryDirectory(prefix="expense-postgres-") as directory:
+        env_path = Path(directory) / "postgres.env"
+        private_file(env_path, f"POSTGRES_USER=expense\nPOSTGRES_PASSWORD={url.password}\nPOSTGRES_DB=expense_tracker\n")
+        docker("run", "-d", "--name", CONTAINER, "--label", LABEL,
+               "--env-file", str(env_path), "-p", "127.0.0.1:5432:5432",
+               "-v", "expense-tracker-postgres-data:/var/lib/postgresql/data",
+               "postgres:17-bookworm", stdout=subprocess.DEVNULL)
 
 # Use an actual SQL connection, not only an open port, as the readiness check.
 params = dict(host=url.host, port=url.port, user=url.username, password=url.password, dbname=url.database, connect_timeout=2)
