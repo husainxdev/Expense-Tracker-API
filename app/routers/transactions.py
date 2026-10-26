@@ -38,8 +38,8 @@ def filter_transactions(
     db: Database,
     type: TransactionType | None = None,
     category: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
-    minimum_amount: Annotated[float | None, Query(ge=0, le=999999999999.99, allow_inf_nan=False)] = None,
-    maximum_amount: Annotated[float | None, Query(ge=0, le=999999999999.99, allow_inf_nan=False)] = None,
+    minimum_amount: Annotated[float | None, Query(ge=0, allow_inf_nan=False)] = None,
+    maximum_amount: Annotated[float | None, Query(ge=0, allow_inf_nan=False)] = None,
 ):
     if minimum_amount is not None and maximum_amount is not None and minimum_amount > maximum_amount:
         raise HTTPException(status_code=422, detail="minimum_amount must not exceed maximum_amount")

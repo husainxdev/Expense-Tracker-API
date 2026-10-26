@@ -3,19 +3,18 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints
 
-Username = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")]
+Username = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Category = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 TransactionType = Literal["income", "expense"]
-# API accepts JSON numbers; PostgreSQL stores exact cents using NUMERIC(14, 2).
-Amount = Annotated[float, Field(gt=0, ge=0.01, le=999999999999.99, allow_inf_nan=False, multiple_of=0.01)]
+Amount = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 
 
 class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: Username
     email: EmailStr = Field(max_length=254)
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class UserRead(BaseModel):

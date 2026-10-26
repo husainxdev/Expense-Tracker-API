@@ -1,7 +1,6 @@
 from datetime import date as Date
-from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date as SQLDate, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, Date as SQLDate, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,7 +25,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    amount: Mapped[float] = mapped_column(Float)
     type: Mapped[str] = mapped_column(String(7))
     category: Mapped[str] = mapped_column(String(100), index=True)
     date: Mapped[Date] = mapped_column(SQLDate)

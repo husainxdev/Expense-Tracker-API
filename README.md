@@ -1,132 +1,92 @@
-# Personal Expense Tracker API
+# Expense Tracker API
 
-A FastAPI + PostgreSQL application for the PHITRON Module 16 midterm. Users register, log in with JWT authentication, and manage only their own income and expense transactions.
+PHITRON Module 16 Mid Term: a personal expense tracker built with FastAPI, SQLAlchemy, PostgreSQL, JWT authentication, and Pydantic.
 
-## Features
+## Setup
 
-- Argon2 password hashing; password hashes never appear in API responses.
-- Expiring, signed JWT bearer tokens and Swagger's **Authorize** login flow.
-- SQLAlchemy user-to-transaction relationship and persistent PostgreSQL storage.
-- Owner-scoped CRUD and filtering; inaccessible and missing records both return 404.
-- Pydantic validation, database constraints, and Alembic schema migrations.
-- PostgreSQL-backed pytest suite, GitHub Actions, and a Render Blueprint.
-
-Money is stored as PostgreSQL `NUMERIC(14, 2)` for exact cents and exposed as a JSON number. Amounts must be positive, have at most two decimal places, and not exceed 999999999999.99. Usernames are case-sensitive and accept letters, digits, and underscores. Dates use `YYYY-MM-DD`. PUT replaces all editable fields; clients cannot set `owner_id`.
-
-## Run locally
-
-Requirements: Python 3.12 and a running Docker daemon (or your own PostgreSQL instance).
+Use Python 3.12 and a PostgreSQL database.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python scripts/dev_setup.py
-alembic upgrade head
+cp .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to your PostgreSQL connection string. For the assignment, use an online PostgreSQL instance, such as Render PostgreSQL. Preserve TLS settings required by your provider.
+
+Generate `JWT_SECRET_KEY` with the following command and place it in `.env`:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Start the API:
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-`dev_setup.py` generates an ignored `.env` with random local credentials, starts a dedicated PostgreSQL 17 container bound to loopback, and creates a separate test database. Rerunning it reuses the container and database. It preserves an existing `.env` and refuses to reconfigure a nonlocal database. Database data lives in the `expense-tracker-postgres-data` Docker volume.
+SQLAlchemy creates the user and transaction tables on startup. API documentation is available at `/docs`.
 
-Alternatively, copy `.env.example` to `.env`, configure your own PostgreSQL `DATABASE_URL`, generate a random `JWT_SECRET_KEY` with the command in the example, and run the migration and server commands above. `postgres://` and `postgresql://` URLs from hosting providers are automatically normalized to the psycopg driver. Keep any provider-required TLS query parameters such as `sslmode=require`.
+## Endpoints
 
-Interactive API documentation is at `/docs`; the OpenAPI schema is at `/openapi.json`. `GET /health` checks database connectivity and returns 503 if the database is unavailable.
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/auth/register` | Register a user |
+| POST | `/auth/login` | Log in and receive a JWT token |
+| POST | `/transactions` | Create your transaction |
+| GET | `/transactions` | List your transactions |
+| GET | `/transactions/filter` | Filter your transactions |
+| GET | `/transactions/{transaction_id}` | Get your transaction |
+| PUT | `/transactions/{transaction_id}` | Update your transaction |
+| DELETE | `/transactions/{transaction_id}` | Delete your transaction |
 
-## API
-
-| Method | Endpoint | Authentication | Result |
-| --- | --- | --- | --- |
-| POST | `/auth/register` | Public | 201: user ID, username, email |
-| POST | `/auth/login` | Public | 200: access token and bearer token type |
-| POST | `/transactions` | Bearer JWT | 201: created transaction |
-| GET | `/transactions` | Bearer JWT | 200: your transactions |
-| GET | `/transactions/filter` | Bearer JWT | 200: your matching transactions |
-| GET | `/transactions/{id}` | Bearer JWT | 200: your transaction, or 404 |
-| PUT | `/transactions/{id}` | Bearer JWT | 200: updated transaction, or 404 |
-| DELETE | `/transactions/{id}` | Bearer JWT | 200: confirmation message, or 404 |
-
-Registration accepts JSON:
+Register with JSON:
 
 ```json
-{"username": "alice", "email": "alice@example.com", "password": "a-long-personal-password"}
+{"username": "alice", "email": "alice@example.com", "password": "my-password"}
 ```
 
-Login uses **form data**, not JSON, for compatibility with OAuth2 and Swagger:
+Login accepts form fields `username` and `password`. Use the returned access token in `Authorization: Bearer <access_token>`, or log in using the **Authorize** button in `/docs`.
 
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'username=alice' \
-  --data-urlencode 'password=a-long-personal-password'
-```
-
-Use the returned token as `Authorization: Bearer <access_token>`. Create and update accept this JSON body:
+Create and update accept JSON:
 
 ```json
 {
   "title": "Lunch",
-  "amount": 150.50,
+  "amount": 150.5,
   "type": "expense",
   "category": "Food",
   "date": "2026-10-26"
 }
 ```
 
-Filtering supports any combination of `type`, `category`, `minimum_amount`, and `maximum_amount`. Categories match exactly; amount bounds are inclusive. For example: `/transactions/filter?type=expense&category=Food&minimum_amount=100&maximum_amount=5000`. Reversed bounds and invalid types return 422. Duplicate usernames return 409; failed login and missing/invalid/expired tokens return 401.
+`amount` must be positive and `type` must be `income` or `expense`. The API automatically assigns the logged-in user as owner. Another user's transaction and a missing transaction both return 404.
 
-## Tests
-
-With the local setup above:
-
-```bash
-python scripts/test.py -q
-```
-
-For another test PostgreSQL instance, set `TEST_DATABASE_URL` securely and run `pytest -q`. The database name **must end in `_test`**. Tests run migrations there and roll back each test's changes. Never point this variable at a production database. Tests cover all five required CRUD cases plus registration, hashing, login, ownership on read/update/delete/filter, validation, invalid JWTs, missing records, and database health. GitHub Actions provisions its own PostgreSQL service.
-
-To exercise a running server over HTTP:
-
-```bash
-python scripts/smoke.py
-```
-
-This creates a uniquely named smoke-test user, exercises CRUD and filtering, and deletes its transaction. The local smoke-test user remains in the database.
-
-## Deploy to Render with online PostgreSQL
-
-The repository includes `render.yaml` to create both a web service and a managed online PostgreSQL database. No database credentials or signing keys are committed.
-
-1. Push the project to your GitHub repository.
-2. In Render, select **New → Blueprint**, connect the repository, and review the proposed resources and current pricing/limits before creating them.
-3. Apply the Blueprint. Render injects the database connection string and generates the JWT signing key. The start command runs `alembic upgrade head`, then starts Uvicorn on Render's `$PORT`.
-4. Verify `/health`, open `/docs`, register an account, authorize, and create/list a transaction on the deployed service.
-
-The Blueprint requests free plans where available. Free services can sleep and free PostgreSQL databases can expire; check Render's current terms and choose a paid database if you need ongoing storage. For a paid web service or multiple replicas, move migrations to a single `preDeployCommand: alembic upgrade head` and use only Uvicorn in `startCommand`.
-
-Environment variables:
-
-| Variable | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Required PostgreSQL connection string |
-| `JWT_SECRET_KEY` | Required random signing secret, at least 32 characters |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime, defaults to 30 |
-| `TEST_DATABASE_URL` | Separate test database; tests only |
-
-## Structure
+Filtering supports `type`, `category`, `minimum_amount`, and `maximum_amount`, individually or together:
 
 ```text
-app/
-  main.py              FastAPI entry point and health endpoint
-  config.py            Environment validation
-  database.py          Engine and database sessions
-  models.py            SQLAlchemy tables and relationships
-  schemas.py           Request and response validation
-  security.py          Password hashing, JWTs, current user
-  routers/
-    auth.py            Register and login
-    transactions.py    Owner-scoped CRUD and filtering
-migrations/            Alembic schema migrations
-scripts/               Local PostgreSQL setup, test runner, HTTP smoke check
-tests/                 PostgreSQL-backed API tests
-render.yaml            Web service and online PostgreSQL deployment
+/transactions/filter?type=expense&category=Food&minimum_amount=100&maximum_amount=5000
 ```
+
+## Pytest
+
+Create a separate PostgreSQL database with a name ending in `_test`, and set `TEST_DATABASE_URL` to its connection string. Then run:
+
+```bash
+pytest -q
+```
+
+The five tests cover listing, getting a specific transaction, creating, updating, and deleting. They also check ownership, filtering, validation, and missing records within those cases. Test changes are rolled back.
+
+## Render deployment
+
+1. Push the project to GitHub.
+2. In Render, select **New → Blueprint** and connect this repository.
+3. Review and apply `render.yaml`. It configures a Python web service and online PostgreSQL, injects `DATABASE_URL`, and generates `JWT_SECRET_KEY`.
+4. Open the deployed service's `/docs` and test registration, login, and transactions.
+
+The build command is `pip install -r requirements.txt`. The start command is `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
+
+Check current Render pricing and free database expiration limits before provisioning. Live deployment requires access to your Render account.

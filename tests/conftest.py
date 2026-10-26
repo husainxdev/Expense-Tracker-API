@@ -2,8 +2,6 @@ import os
 import secrets
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
@@ -18,14 +16,14 @@ if not (make_url(test_url).database or "").endswith("_test"):
 os.environ["DATABASE_URL"] = test_url
 os.environ.setdefault("JWT_SECRET_KEY", secrets.token_urlsafe(48))
 
-from app.database import get_db  # noqa: E402
+from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def engine():
-    command.upgrade(Config("alembic.ini"), "head")
     engine = create_engine(test_url)
+    Base.metadata.create_all(bind=engine)
     yield engine
     engine.dispose()
 
